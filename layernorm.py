@@ -50,6 +50,46 @@ def var_kernel(
     var = tl.sum(acc, axis=0) / N + eps
     tl.store(output_ptr + row, var)
 
+@triton.jit 
+def normalize_kernel(
+    input_ptr, 
+    output_ptr, 
+    mean_ptr, 
+    var_ptr, 
+    weight_ptr, 
+    bias_ptr, 
+    stride, 
+    N , 
+    BLOCK_SIZE: tl.constexpr, 
+):
+    row = tl.program_id(0)
+    input_off = row * stride
+    
+    # Load mean and variance for this row
+    mean = tl.load(mean_ptr + row)
+    var = tl.load(var_ptr + row)
+    std = tl.sqrt(var)
+
+    for off in range(0, N, BLOCK_SIZE):
+        cols = off + tl.arange(0, BLOCK_SIZE)
+        mask = cols < N
+        
+        # Load input values
+        x = tl.load(input_ptr + input_off + cols, mask=mask, other=0.0)
+        
+        # Load weight and bias
+        w = tl.load(weight_ptr + cols, mask=mask, other=0.0)
+        b = tl.load(bias_ptr + cols, mask=mask, other=0.0)
+        
+        # Normalize
+        y = w * ((x - mean) / std) + b
+        
+        # Store result
+        tl.store(output_ptr + input_off + cols, y, mask=mask)
+
+
+
+
 
 class TritonLayerNorm:
     def __init__(self, eps=1e-5):
@@ -96,6 +136,8 @@ class TritonLayerNorm:
         mean = self.mean(x)
         var = self.var(x, mean)
         return mean, var
+
+
 
     def test():
         x= torch(32, 512, device = 'cude')
