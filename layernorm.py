@@ -4,7 +4,7 @@ import triton.language as tl
 
 
 @triton.jit 
-def mean_kernel(  # Note: fixed spelling of "kernel"
+def mean_kernel( 
     input_ptr, 
     output_ptr,
     stride, 
@@ -96,3 +96,20 @@ class TritonLayerNorm:
         mean = self.mean(x)
         var = self.var(x, mean)
         return mean, var
+
+    def test():
+        x= torch(32, 512, device = 'cude')
+
+        ln = TritonLayerNorm()
+        triton_mean, triton_var = ln.forward(x)
+        
+        torch_mean = x.mean(dim=1)
+        torch_var = x.var(dim=1, unbiased=False) + 1e-5
+        
+        mean_diff = torch.abs(triton_mean - torch_mean).max().item()
+        var_diff = torch.abs(triton_var - torch_var).max().item()
+        
+        print(f"Mean difference: {mean_diff}")
+        print(f"Variance difference: {var_diff}")
+
+    test()
